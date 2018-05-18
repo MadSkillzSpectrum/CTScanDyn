@@ -13,6 +13,14 @@ using System.Windows.Forms;
 using Dicom;
 using Dicom.Imaging;
 using Dicom.Imaging.Mathematics;
+using Emgu;
+using Emgu.CV;
+using Emgu.CV.CvEnum;
+using Emgu.CV.Features2D;
+using Emgu.CV.Flann;
+using Emgu.CV.Structure;
+using Emgu.CV.Util;
+using Emgu.CV.XFeatures2D;
 
 namespace CTScanDyn
 {
@@ -28,13 +36,11 @@ namespace CTScanDyn
         public Form1()
         {
             InitializeComponent();
-            button2.Enabled = false;
         }
 
         private void button1_Click(object sender, EventArgs e)
         {
             FillImageSet(ImageSetBefore, "before");
-            button2.Enabled = true;
         }
 
 
@@ -48,7 +54,7 @@ namespace CTScanDyn
         {
             if (ImageSetBefore.Count > ImageSetAfter.Count)
             {
-                ImageSetBefore.RemoveRange(ImageSetAfter.Count-1, ImageSetBefore.Count - ImageSetAfter.Count);
+                ImageSetBefore.RemoveRange(ImageSetAfter.Count - 1, ImageSetBefore.Count - ImageSetAfter.Count);
             }
             else if (ImageSetBefore.Count < ImageSetAfter.Count)
             {
@@ -82,21 +88,31 @@ namespace CTScanDyn
                 var files = Directory.GetFiles(folderBrowserDialog1.SelectedPath, "*.dcm");
                 foreach (var file in files)
                 {
-                    var image = new DicomImage(file).RenderImage().AsBitmap();
-                    string newName = prefix +"/"+ Path.GetFileName(file).Replace(".dcm", ".jpg");
+                    var ds = new DicomImage(file)
+                    {
+                        WindowWidth = 5,
+                        WindowCenter = 500
+                    };
+                    var image = ds.RenderImage().AsBitmap();
+                    string newName = prefix + "/" + Path.GetFileName(file).Replace(".dcm", ".jpg");
                     image.Save(newName);
                     image = (Bitmap)Image.FromFile(newName);
-                    ImageData id = new ImageData(image);
+
+                    
+                    SIFT s = new SIFT();
+                    Mat mat = CvInvoke.Imread(newName, ImreadModes.Grayscale);
+                    var vec = new VectorOfKeyPoint();
+                    Mat modelDescriptors = new Mat();
+                    s.DetectAndCompute(mat, null, vec, modelDescriptors, false);
+                    ImageData id = new ImageData(image)
+                    {
+                        KeyPoints = vec,
+                        Descriptors = modelDescriptors
+                    };
                     set.Add(id);
                 }
             }
         }
-
-        private void trackBar1_Scroll(object sender, EventArgs e)
-        {
-            label1.Text = (trackBar1.Value * 100 / trackBar1.Maximum) + @"%";
-        }
-
 
         private void button3_Click(object sender, EventArgs e)
         {
@@ -104,30 +120,56 @@ namespace CTScanDyn
             Directory.CreateDirectory("result");
             listView1.Items.Clear();
             imageList2.Images.Clear();
-            int sum = trackBar1.Value;
-            int diffX=0, diffY=0;
-            for (int i=0; i<ImageSetBefore.Count;i++)
+            int diffX = 0, diffY = 0;
+            for (int i = 0; i < ImageSetBefore.Count; i++)
             {
                 var image1 = ImageSetBefore.ElementAt(i);
                 image1.LockBits();
-                var p1 = image1.GetBones(sum);
 
+                var p1 = image1.GetCentroid();
                 var image2 = ImageSetAfter.ElementAt(i);
                 image2.LockBits();
-                var p2 = image2.GetBones(sum);
 
-                //diffX = p2.X - p1.X;
-                //diffY = p2.Y - p1.Y;
+                var p2 = image2.GetCentroid();
 
-                var image = ImageData.Subtract(image1, image2, sum, diffX, diffY);
-                image.Save("result/"+i+".jpg");
-                ImageSetResult.Add(new ImageData((Bitmap) image));
+                /*var diff = new Point(p2.X - p1.X,p2.Y-p1.X);
+                image1.Translate(diff);*/
+
+                var image = ImageData.Subtract(image1, image2, diffX, diffY);
+                image.Save("result/" + i + ".jpg");
+                ImageSetResult.Add(new ImageData((Bitmap)image));
                 imageList2.Images.Add(image);
-                ListViewItem item = new ListViewItem { ImageIndex =i, Text = i.ToString() };
+                ListViewItem item = new ListViewItem { ImageIndex = i, Text = i.ToString() };
                 listView1.Items.Add(item);
 
                 image1.UnlockBits();
                 image2.UnlockBits();
+
+                VectorOfVectorOfDMatch matches = new VectorOfVectorOfDMatch();
+
+                using (Emgu.CV.Flann.LinearIndexParams ip = new Emgu.CV.Flann.LinearIndexParams())
+                using (Emgu.CV.Flann.SearchParams sp = new SearchParams())
+                using (DescriptorMatcher matcher = new FlannBasedMatcher(ip, sp))
+                {
+                    matcher.Add(image1.Descriptors);
+                    matcher.KnnMatch(image2.Descriptors, matches, 2, null);
+                    Mat mask = new Mat(matches.Size, 1, DepthType.Cv8U, 1);
+                    mask.SetTo(new MCvScalar(255));
+                    Features2DToolbox.VoteForUniqueness(matches, 0.8, mask);
+                    Mat homography = null;
+                    int Count = CvInvoke.CountNonZero(mask);
+                    if (Count >= 4)
+                    {
+                        Count = Features2DToolbox.VoteForSizeAndOrientation(image1.KeyPoints, image2.KeyPoints, matches, mask, 1.5, 20);
+                        if (Count >= 4)
+                            homography = Features2DToolbox.GetHomographyMatrixFromMatchedFeatures(image1.KeyPoints, image2.KeyPoints, matches, mask, 2);
+                    }
+                    var pts = image1.SignificantPoints.Select(a => (PointF) a).ToArray();
+                   // CvInvoke.PerspectiveTransform(pts,homography);
+                   // RotatedRect IdentifiedImage = CvInvoke.MinAreaRect(pts);
+                }
+
+                //CvInvoke.SVDecomp();
 
             }
             listView1.Update();
@@ -141,11 +183,6 @@ namespace CTScanDyn
 
         }
 
-        private void button5_Click(object sender, EventArgs e)
-        {
-            UpdateResult();
-        }
-
         private void Form1_Load(object sender, EventArgs e)
         {
 
@@ -153,7 +190,7 @@ namespace CTScanDyn
 
         private void listView1_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if(listView1.SelectedItems.Count>0)
+            if (listView1.SelectedItems.Count > 0)
                 pictureBox1.Image = ImageSetResult[listView1.SelectedItems[0].ImageIndex].Source;
         }
     }

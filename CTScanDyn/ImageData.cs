@@ -6,6 +6,8 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
+using Emgu.CV;
+using Emgu.CV.Util;
 
 namespace CTScanDyn
 {
@@ -18,13 +20,15 @@ namespace CTScanDyn
         public int Height { get; set; }
         public int Width { get; set; }
         public int Depth { get; set; }
-        private List<Point> SignificantPoints { get; }
+        public List<Point> SignificantPoints { get; set; }
         public Point CenterOfMass { get; set; }
         public Point Offset { get; set; }
         public int RotationDgr { get; set; }
         public bool IsDisposed { get; set; }
         private IntPtr Iptr { get; set; }
         private int rSize { get; set; }
+        public Mat Descriptors { get; set; }
+        public VectorOfKeyPoint KeyPoints { get; set; }
 
         public ImageData(Bitmap source)
         {
@@ -33,19 +37,27 @@ namespace CTScanDyn
             IsDisposed = false;
         }
 
-        public Point GetBones(int percent)
+        public Point GetCentroid()
         {
             for (int y = 0; y < Height; y += 4)
                 for (int x = 0; x < Width; x += 4)
                 {
 
-                    if (Pixels[x * rSize + y] + Pixels[x * rSize + y + 1] + Pixels[x * rSize + y + 2] >= percent)
+                    if (Pixels[x * rSize + y] + Pixels[x * rSize + y + 1] + Pixels[x * rSize + y + 2] > 0)
                     {
                         SignificantPoints.Add(new Point(x, y));
                     }
                 }
-            //CalculateCenter();
+            CalculateCenter();
             return CenterOfMass;
+        }
+
+        private void CalculateCoVar(ImageData image2)
+        {
+            foreach (Point p in SignificantPoints)
+            {
+                                
+            }
         }
 
         private void CalculateCenter()
@@ -121,7 +133,22 @@ namespace CTScanDyn
             }
         }
 
-        public static Image Subtract(ImageData image1, ImageData image2, int percent, int diffX, int diffY)
+        public void Translate(Point diff)
+        {
+            if (diff.X != 0 && diff.Y != 0)
+            {
+                var newPoints = new List<Point>();
+                foreach (var p in SignificantPoints)
+                {
+                    var newX = p.X + diff.X;
+                    var newY = p.Y + diff.Y;
+                    if (newX > 0 && newX < Width && newY > 0 && newY < Height)
+                        newPoints.Add(new Point(newX, newY));
+                }
+                SignificantPoints = newPoints;
+            }
+        }
+        public static Image Subtract(ImageData image1, ImageData image2, int diffX, int diffY)
         {
             Bitmap res = new Bitmap(image1.Width, image1.Height);
             for (int y = 0; y < image1.Height; y++)
@@ -132,14 +159,7 @@ namespace CTScanDyn
                     {
                         Color c1 = image1.GetPixel(x + diffX, y - diffY);
                         Color c2 = image2.GetPixel(x, y);
-                        if (c1.R + c1.G + c1.B >= percent || c2.R + c2.G + c2.B >= percent)
-                        {
-                            res.SetPixel(x, y, SubtractPixel(image2.GetPixel(x, y), image1.GetPixel(x + diffX, y - diffY)));
-                        }
-                        else
-                        {
-                            res.SetPixel(x, y, Color.Black);
-                        }
+                        res.SetPixel(x, y, SubtractPixel(image2.GetPixel(x, y), image1.GetPixel(x + diffX, y - diffY)));
                     }
                 }
             }
@@ -151,7 +171,10 @@ namespace CTScanDyn
             //Color c3 = Color.FromArgb(Math.Abs(c2.R - c1.R), Math.Abs(c2.G - c1.G), Math.Abs(c2.B - c1.B));
             if (c1.R - c2.R < 0 || c1.G - c2.G < 0 || c1.B - c2.B < 0)
                 return Color.Red;//пропало
-            return Color.Green;//добавилось
+            else if (c1.R - c2.R > 0 && c1.G - c2.G > 0 && c1.B - c2.B > 0)
+                return Color.Green; //добавилось
+            else
+                return Color.Black; //не изменилось
             //return c3;
         }
 
