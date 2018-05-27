@@ -18,6 +18,7 @@ using Emgu.CV;
 using Emgu.CV.CvEnum;
 using Emgu.CV.Features2D;
 using Emgu.CV.Flann;
+using Emgu.CV.UI;
 using Emgu.CV.Structure;
 using Emgu.CV.Util;
 using Emgu.CV.XFeatures2D;
@@ -98,7 +99,7 @@ namespace CTScanDyn
                     image.Save(newName);
                     image = (Bitmap)Image.FromFile(newName);
 
-                    
+
                     SIFT s = new SIFT();
                     Mat mat = CvInvoke.Imread(newName, ImreadModes.Grayscale);
                     var vec = new VectorOfKeyPoint();
@@ -107,7 +108,8 @@ namespace CTScanDyn
                     ImageData id = new ImageData(image)
                     {
                         KeyPoints = vec,
-                        Descriptors = modelDescriptors
+                        Descriptors = modelDescriptors,
+                        CvMaterial=mat
                     };
                     set.Add(id);
                 }
@@ -120,31 +122,14 @@ namespace CTScanDyn
             Directory.CreateDirectory("result");
             listView1.Items.Clear();
             imageList2.Images.Clear();
-            int diffX = 0, diffY = 0;
             for (int i = 0; i < ImageSetBefore.Count; i++)
             {
                 var image1 = ImageSetBefore.ElementAt(i);
                 image1.LockBits();
-
-                var p1 = image1.GetCentroid();
+                
                 var image2 = ImageSetAfter.ElementAt(i);
                 image2.LockBits();
-
-                var p2 = image2.GetCentroid();
-
-                /*var diff = new Point(p2.X - p1.X,p2.Y-p1.X);
-                image1.Translate(diff);*/
-
-                var image = ImageData.Subtract(image1, image2, diffX, diffY);
-                image.Save("result/" + i + ".jpg");
-                ImageSetResult.Add(new ImageData((Bitmap)image));
-                imageList2.Images.Add(image);
-                ListViewItem item = new ListViewItem { ImageIndex = i, Text = i.ToString() };
-                listView1.Items.Add(item);
-
-                image1.UnlockBits();
-                image2.UnlockBits();
-
+                
                 VectorOfVectorOfDMatch matches = new VectorOfVectorOfDMatch();
 
                 using (Emgu.CV.Flann.LinearIndexParams ip = new Emgu.CV.Flann.LinearIndexParams())
@@ -157,25 +142,56 @@ namespace CTScanDyn
                     mask.SetTo(new MCvScalar(255));
                     Features2DToolbox.VoteForUniqueness(matches, 0.8, mask);
                     Mat homography = null;
-                    int Count = CvInvoke.CountNonZero(mask);
-                    if (Count >= 4)
+                    int сount = CvInvoke.CountNonZero(mask);
+                    if (сount >= 4)
                     {
-                        Count = Features2DToolbox.VoteForSizeAndOrientation(image1.KeyPoints, image2.KeyPoints, matches, mask, 1.5, 20);
-                        if (Count >= 4)
+                        сount = Features2DToolbox.VoteForSizeAndOrientation(image1.KeyPoints, image2.KeyPoints, matches, mask, 1.5, 20);
+                        if (сount >= 4)
                             homography = Features2DToolbox.GetHomographyMatrixFromMatchedFeatures(image1.KeyPoints, image2.KeyPoints, matches, mask, 2);
                     }
-                    var pts = image1.SignificantPoints.Select(a => (PointF) a).ToArray();
-                   // CvInvoke.PerspectiveTransform(pts,homography);
-                   // RotatedRect IdentifiedImage = CvInvoke.MinAreaRect(pts);
-                }
+                   
+                    Mat result = new Mat();
+                    Features2DToolbox.DrawMatches(image1.CvMaterial, image1.KeyPoints, image2.CvMaterial, image2.KeyPoints,
+                        matches, result, new MCvScalar(255, 255, 255), new MCvScalar(255, 255, 255), mask, Features2DToolbox.KeypointDrawType.Default);
+                    if(homography != null)
+                    {
+                        //draw a rectangle along the projected model
+                        System.Drawing.Rectangle rect = new System.Drawing.Rectangle(Point.Empty, image1.CvMaterial.Size);
+                        PointF[] pts = new PointF[]
+                        {
+                            new PointF(rect.Left, rect.Bottom),
+                            new PointF(rect.Right, rect.Bottom),
+                            new PointF(rect.Right, rect.Top),
+                            new PointF(rect.Left, rect.Top)
+                        };
+                        pts = CvInvoke.PerspectiveTransform(pts, homography);
 
-                //CvInvoke.SVDecomp();
+                        Point[] points = Array.ConvertAll<PointF, Point>(pts, Point.Round);
+                        using (VectorOfPoint vp = new VectorOfPoint(points))
+                        {
+                            CvInvoke.Polylines(result, vp, true, new MCvScalar(255, 0, 0, 255),1);
+                        }
+
+                    }
+
+                    image1.UnlockBits();
+                    image2.UnlockBits();
+
+                    Mat regged = new Mat();
+                    CvInvoke.WarpPerspective(image1.CvMaterial, regged,homography,image1.Size);
+
+                    var image = ImageData.Subtract(regged.Bitmap, image2.Source);
+                    image.Save("result/" + i + ".jpg");
+                    ImageSetResult.Add(new ImageData((Bitmap)image));
+                    imageList2.Images.Add(image);
+                    ListViewItem item = new ListViewItem { ImageIndex = i, Text = i.ToString() };
+                    listView1.Items.Add(item);
+
+                    imageBox1.Image = result;
+                }
 
             }
             listView1.Update();
-            /*diffX = diffX / ImageSetBefore.Count;
-            diffY = diffY / ImageSetBefore.Count;
-            dataGridView1.Rows.Add(diffX, diffY);*/
         }
 
         public void UpdateResult()
@@ -190,8 +206,17 @@ namespace CTScanDyn
 
         private void listView1_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (listView1.SelectedItems.Count > 0)
-                pictureBox1.Image = ImageSetResult[listView1.SelectedItems[0].ImageIndex].Source;
+            if (listView1.SelectedItems.Count == 0) return;
+
+            var i = listView1.SelectedItems[0].ImageIndex;
+            pictureBox1.Image = ImageSetResult[i].Source;
+            pictureBox3.Image = ImageSetBefore[i].Source;
+            pictureBox2.Image = ImageSetAfter[i].Source;
+        }
+
+        private void tableLayoutPanel1_Paint(object sender, PaintEventArgs e)
+        {
+
         }
     }
 }

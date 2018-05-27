@@ -19,6 +19,7 @@ namespace CTScanDyn
         public byte[] Pixels { get; set; }
         public int Height { get; set; }
         public int Width { get; set; }
+        public Size Size { get { return new Size(Width,Height);}}
         public int Depth { get; set; }
         public List<Point> SignificantPoints { get; set; }
         public Point CenterOfMass { get; set; }
@@ -28,6 +29,7 @@ namespace CTScanDyn
         private IntPtr Iptr { get; set; }
         private int rSize { get; set; }
         public Mat Descriptors { get; set; }
+        public Mat CvMaterial { get; set; }
         public VectorOfKeyPoint KeyPoints { get; set; }
 
         public ImageData(Bitmap source)
@@ -148,19 +150,16 @@ namespace CTScanDyn
                 SignificantPoints = newPoints;
             }
         }
-        public static Image Subtract(ImageData image1, ImageData image2, int diffX, int diffY)
+        public static Image Subtract(Bitmap image1, Bitmap image2)
         {
             Bitmap res = new Bitmap(image1.Width, image1.Height);
             for (int y = 0; y < image1.Height; y++)
             {
                 for (int x = 0; x < image1.Width; x++)
                 {
-                    if (x + diffX < image1.Width && y - diffY < image1.Height && y - diffY >= 0 && x + diffX >= 0)
-                    {
-                        Color c1 = image1.GetPixel(x + diffX, y - diffY);
+                        Color c1 = image1.GetPixel(x, y);
                         Color c2 = image2.GetPixel(x, y);
-                        res.SetPixel(x, y, SubtractPixel(image2.GetPixel(x, y), image1.GetPixel(x + diffX, y - diffY)));
-                    }
+                        res.SetPixel(x, y, SubtractPixel(image2.GetPixel(x, y), image1.GetPixel(x, y)));
                 }
             }
             return res;
