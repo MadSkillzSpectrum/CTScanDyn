@@ -12,6 +12,7 @@ namespace CTScanDyn
     {
         public Mat Difference = null;
         public Bitmap Source = null;
+        public Mat Registered = null;
         public ImageDataResult(Bitmap source, Mat mat)
         {
             Difference = mat;

@@ -24,6 +24,7 @@ namespace CTScanDyn
         public bool IsDisposed { get; set; }
         public Mat Descriptors { get; set; }
         public Mat CvMaterial { get; set; }
+        public Mat CvOriginal { get; set; }
         public VectorOfKeyPoint KeyPoints { get; set; }
 
         public ImageData(Bitmap source, Bitmap bones)
@@ -42,7 +43,7 @@ namespace CTScanDyn
                 {
                     Color c1 = image1.GetPixel(x, y);
                     Color c2 = image2.GetPixel(x, y);
-                    res.SetPixel(x, y, SubtractPixel(c2,c1));
+                    res.SetPixel(x, y, SubtractPixel(c1,c2));
                 }
             }
             return res;
@@ -50,13 +51,12 @@ namespace CTScanDyn
 
         private static Color SubtractPixel(Color c1, Color c2)
         {
-            //Color c3 = Color.FromArgb(Math.Abs(c2.R - c1.R), Math.Abs(c2.G - c1.G), Math.Abs(c2.B - c1.B));
-            if (c1.R - c2.R < 0 || c1.G - c2.G < 0 || c1.B - c2.B < 0)
-                return Color.Red;//пропало
-            if (c1.R - c2.R > 0 && c1.G - c2.G > 0 && c1.B - c2.B > 0)
-                return Color.Green; //добавилось
-            return Color.Black; //не изменилось
-            //return c3;
+            if (c1.R - c2.R < -100 || c1.G - c2.G < -100 || c1.B - c2.B < -100)
+                return Color.Red;
+            if (c1.R - c2.R > 100 && c1.G - c2.G > 100 && c1.B - c2.B > 100)
+                return Color.Green;
+                return c2;
+
         }
 
         #region IDisposable Members

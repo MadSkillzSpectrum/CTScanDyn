@@ -76,7 +76,7 @@ namespace CTScanDyn
                     var ds = new DicomImage(file);
                     var ds_bones = new DicomImage(file)
                     {
-                        WindowWidth = 50,
+                        WindowWidth = 100,
                         WindowCenter = 500
                     };
                     var image = ds.RenderImage().AsBitmap();
@@ -90,6 +90,7 @@ namespace CTScanDyn
 
                     SIFT s = new SIFT();
                     Mat mat = CvInvoke.Imread(newBonesName, ImreadModes.Grayscale);
+                    Mat matOrig = CvInvoke.Imread(newName, ImreadModes.Unchanged);
                     var vec = new VectorOfKeyPoint();
                     Mat modelDescriptors = new Mat();
                     s.DetectAndCompute(mat, null, vec, modelDescriptors, false);
@@ -97,7 +98,8 @@ namespace CTScanDyn
                     {
                         KeyPoints = vec,
                         Descriptors = modelDescriptors,
-                        CvMaterial = mat
+                        CvMaterial = mat,
+                        CvOriginal = matOrig
                     };
                     set.Add(id);
                 }
@@ -126,7 +128,7 @@ namespace CTScanDyn
                     matcher.KnnMatch(image2.Descriptors, matches, 2, null);
                     Mat mask = new Mat(matches.Size, 1, DepthType.Cv8U, 1);
                     mask.SetTo(new MCvScalar(255));
-                    Features2DToolbox.VoteForUniqueness(matches, 0.8, mask);
+                    Features2DToolbox.VoteForUniqueness(matches, 0.9, mask);
                     Mat homography = null;
                     int сount = CvInvoke.CountNonZero(mask);
                     if (сount >= 4)
@@ -159,13 +161,13 @@ namespace CTScanDyn
                         {
                             CvInvoke.Polylines(result, vp, true, new MCvScalar(255, 0, 0, 255), 1);
                         }
-                        CvInvoke.WarpPerspective(image1.CvMaterial, regged, homography, image1.Size);
+                        CvInvoke.WarpPerspective(image1.CvOriginal, regged, homography, image1.Size);
                         image = ImageData.Subtract(regged.Bitmap, image2.Source);
                     }
                     else
                         image = ImageData.Subtract(image1.Source, image2.Source);
                     image.Save("result/" + i + ".jpg");
-                    ImageSetResult.Add(new ImageDataResult((Bitmap)image, result));
+                    ImageSetResult.Add(new ImageDataResult((Bitmap)image, result){ Registered = regged});
                     imageList2.Images.Add(image);
                     ListViewItem item = new ListViewItem { ImageIndex = i, Text = i.ToString() };
                     listView1.Items.Add(item);
