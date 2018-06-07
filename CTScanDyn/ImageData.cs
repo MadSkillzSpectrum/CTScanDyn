@@ -13,24 +13,21 @@ namespace CTScanDyn
 {
     class ImageData : IDisposable
     {
-        public Bitmap Source = null;
-        public Bitmap Bones = null;
-
-        public int Height { get; set; }
-        public int Width { get; set; }
-        public Size Size { get { return new Size(Width, Height); } }
-
-        public int Depth { get; set; }
-        public bool IsDisposed { get; set; }
         public Mat Descriptors { get; set; }
         public Mat CvMaterial { get; set; }
         public Mat CvOriginal { get; set; }
         public VectorOfKeyPoint KeyPoints { get; set; }
 
-        public ImageData(Bitmap source, Bitmap bones)
+        public int Height { get; set; }
+        public int Width { get; set; }
+        public Size Size { get { return new Size(Width, Height); } }
+        
+        public bool IsDisposed { get; set; }
+
+        public ImageData(Mat cvOriginal, Mat cvMaterial)
         {
-            this.Source = source;
-            this.Bones = bones;
+            CvOriginal = cvOriginal;
+            CvMaterial = cvMaterial;
             IsDisposed = false;
         }
 
@@ -74,8 +71,8 @@ namespace CTScanDyn
 
         private void Dispose(bool disposing)
         {
-            Source = null;
-            Bones = null;
+            CvOriginal = null;
+            CvMaterial = null;
             IsDisposed = true;
         }
 
